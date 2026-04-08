@@ -21,16 +21,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,7 +63,8 @@ data class AppInfo(
 enum class ScreenState {
     HOME,
     SETTINGS,
-    WALLPAPERS
+    WALLPAPERS,
+    FAVORITES
 }
 
 data class WallpaperOption(
@@ -69,6 +73,10 @@ data class WallpaperOption(
 )
 
 class MainActivity : ComponentActivity() {
+
+    private val prefsName = "dfuse_settings"
+    private val wallpaperKey = "selected_wallpaper_url"
+    private val favoritesKey = "favorite_packages"
 
     @OptIn(ExperimentalTvMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -109,14 +117,46 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun saveSelectedWallpaper(url: String?) {
+        val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
+        prefs.edit().putString(wallpaperKey, url).apply()
+    }
+
+    private fun loadSelectedWallpaper(): String? {
+        val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
+        return prefs.getString(wallpaperKey, null)
+    }
+
+    private fun loadFavoritePackages(): MutableSet<String> {
+        val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
+        return prefs.getStringSet(favoritesKey, emptySet())?.toMutableSet() ?: mutableSetOf()
+    }
+
+    private fun saveFavoritePackages(favorites: Set<String>) {
+        val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
+        prefs.edit().putStringSet(favoritesKey, favorites).apply()
+    }
+
+    private fun toggleFavorite(packageName: String): MutableSet<String> {
+        val favorites = loadFavoritePackages()
+        if (favorites.contains(packageName)) {
+            favorites.remove(packageName)
+        } else {
+            favorites.add(packageName)
+        }
+        saveFavoritePackages(favorites)
+        return favorites
+    }
+
     @Composable
     fun LauncherScreen(
         packageManager: PackageManager,
         onLaunchApp: (String) -> Unit
     ) {
         var apps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+        var favoritePackages by remember { mutableStateOf(loadFavoritePackages()) }
         var currentScreen by remember { mutableStateOf(ScreenState.HOME) }
-        var selectedWallpaperUrl by remember { mutableStateOf<String?>(null) }
+        var selectedWallpaperUrl by remember { mutableStateOf(loadSelectedWallpaper()) }
         var settingsFocused by remember { mutableStateOf(false) }
 
         val settingsFocusRequester = remember { FocusRequester() }
@@ -196,19 +236,13 @@ class MainActivity : ComponentActivity() {
                             .onFocusChanged { settingsFocused = it.isFocused }
                             .clip(RoundedCornerShape(12.dp))
                             .background(
-                                if (settingsFocused) {
-                                    Color.White.copy(alpha = 0.12f)
-                                } else {
-                                    Color.White.copy(alpha = 0.08f)
-                                }
+                                if (settingsFocused) Color.White.copy(alpha = 0.12f)
+                                else Color.White.copy(alpha = 0.08f)
                             )
                             .border(
                                 width = if (settingsFocused) 2.dp else 1.dp,
-                                color = if (settingsFocused) {
-                                    Color.White.copy(alpha = 0.8f)
-                                } else {
-                                    Color.White.copy(alpha = 0.2f)
-                                },
+                                color = if (settingsFocused) Color.White.copy(alpha = 0.8f)
+                                else Color.White.copy(alpha = 0.2f),
                                 shape = RoundedCornerShape(12.dp)
                             )
                             .focusable()
@@ -228,9 +262,10 @@ class MainActivity : ComponentActivity() {
 
                 Text(
                     text = when (currentScreen) {
-                        ScreenState.HOME -> "Apps"
+                        ScreenState.HOME -> "Home"
                         ScreenState.SETTINGS -> "Settings"
                         ScreenState.WALLPAPERS -> "Wallpapers"
+                        ScreenState.FAVORITES -> "Manage Favorites"
                     },
                     fontSize = 18.sp,
                     color = Color(0xFFB0B0B0),
@@ -241,29 +276,85 @@ class MainActivity : ComponentActivity() {
 
                 when (currentScreen) {
                     ScreenState.HOME -> {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(5),
+                        val favoriteApps = apps.filter { favoritePackages.contains(it.packageName) }
+                        val nonFavoriteApps = apps.filter { !favoritePackages.contains(it.packageName) }
+
+                        LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(24.dp),
                             contentPadding = PaddingValues(bottom = 24.dp)
                         ) {
-                            items(apps.size) { index ->
-                                val app = apps[index]
+                            if (favoriteApps.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = "Favorites",
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(bottom = 12.dp)
+                                    )
+                                }
 
-                                AppCard(
-                                    app = app,
-                                    onClick = {
-                                        onLaunchApp(app.packageName)
-                                    },
-                                    modifier = if (index < 5) {
-                                        Modifier.focusProperties {
-                                            up = settingsFocusRequester
+                                items(favoriteApps.chunked(5)) { rowApps ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        rowApps.forEach { app ->
+                                            Box(modifier = Modifier.weight(1f)) {
+                                                AppCard(
+                                                    app = app,
+                                                    onClick = {
+                                                        onLaunchApp(app.packageName)
+                                                    }
+                                                )
+                                            }
                                         }
-                                    } else {
-                                        Modifier
+
+                                        repeat(5 - rowApps.size) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
                                     }
+                                }
+                            }
+
+                            item {
+                                Text(
+                                    text = "All Apps",
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(bottom = 12.dp)
                                 )
+                            }
+
+                            items(nonFavoriteApps.chunked(5)) { rowApps ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    rowApps.forEachIndexed { index, app ->
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            AppCard(
+                                                app = app,
+                                                onClick = {
+                                                    onLaunchApp(app.packageName)
+                                                },
+                                                modifier = if (favoriteApps.isEmpty() && index < 5) {
+                                                    Modifier.focusProperties {
+                                                        up = settingsFocusRequester
+                                                    }
+                                                } else {
+                                                    Modifier
+                                                }
+                                            )
+                                        }
+                                    }
+
+                                    repeat(5 - rowApps.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
                             }
                         }
                     }
@@ -272,6 +363,9 @@ class MainActivity : ComponentActivity() {
                         SettingsListScreen(
                             onWallpaperClick = {
                                 currentScreen = ScreenState.WALLPAPERS
+                            },
+                            onFavoritesClick = {
+                                currentScreen = ScreenState.FAVORITES
                             },
                             onBack = {
                                 currentScreen = ScreenState.HOME
@@ -284,11 +378,26 @@ class MainActivity : ComponentActivity() {
                             wallpapers = cloudinaryWallpapers,
                             onSelectWallpaper = { url ->
                                 selectedWallpaperUrl = url
+                                saveSelectedWallpaper(url)
                                 currentScreen = ScreenState.HOME
                             },
                             onUseDefault = {
                                 selectedWallpaperUrl = null
+                                saveSelectedWallpaper(null)
                                 currentScreen = ScreenState.HOME
+                            },
+                            onBack = {
+                                currentScreen = ScreenState.SETTINGS
+                            }
+                        )
+                    }
+
+                    ScreenState.FAVORITES -> {
+                        FavoritesManagementScreen(
+                            apps = apps,
+                            favoritePackages = favoritePackages,
+                            onToggleFavorite = { packageName ->
+                                favoritePackages = toggleFavorite(packageName)
                             },
                             onBack = {
                                 currentScreen = ScreenState.SETTINGS
@@ -315,19 +424,13 @@ class MainActivity : ComponentActivity() {
                 .onFocusChanged { isFocused = it.isFocused }
                 .clip(RoundedCornerShape(16.dp))
                 .background(
-                    if (isFocused) {
-                        Color.White.copy(alpha = 0.12f)
-                    } else {
-                        Color.White.copy(alpha = 0.06f)
-                    }
+                    if (isFocused) Color.White.copy(alpha = 0.12f)
+                    else Color.White.copy(alpha = 0.06f)
                 )
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
-                    color = if (isFocused) {
-                        Color.White.copy(alpha = 0.8f)
-                    } else {
-                        Color.White.copy(alpha = 0.2f)
-                    },
+                    color = if (isFocused) Color.White.copy(alpha = 0.8f)
+                    else Color.White.copy(alpha = 0.2f),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .focusable()
@@ -347,6 +450,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun SettingsListScreen(
         onWallpaperClick: () -> Unit,
+        onFavoritesClick: () -> Unit,
         onBack: () -> Unit
     ) {
         Column(
@@ -356,6 +460,11 @@ class MainActivity : ComponentActivity() {
             SettingsListItem(
                 title = "Wallpapers",
                 onClick = onWallpaperClick
+            )
+
+            SettingsListItem(
+                title = "Manage Favorites",
+                onClick = onFavoritesClick
             )
 
             SettingsListItem(
@@ -392,19 +501,13 @@ class MainActivity : ComponentActivity() {
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(
-                    if (isFocused) {
-                        Color.White.copy(alpha = 0.12f)
-                    } else {
-                        Color.White.copy(alpha = 0.06f)
-                    }
+                    if (isFocused) Color.White.copy(alpha = 0.12f)
+                    else Color.White.copy(alpha = 0.06f)
                 )
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
-                    color = if (isFocused) {
-                        Color.White.copy(alpha = 0.8f)
-                    } else {
-                        Color.White.copy(alpha = 0.2f)
-                    },
+                    color = if (isFocused) Color.White.copy(alpha = 0.8f)
+                    else Color.White.copy(alpha = 0.2f),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .onFocusChanged { isFocused = it.isFocused }
@@ -475,11 +578,8 @@ class MainActivity : ComponentActivity() {
                 .background(Color.White.copy(alpha = 0.06f))
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
-                    color = if (isFocused) {
-                        Color.White.copy(alpha = 0.8f)
-                    } else {
-                        Color.White.copy(alpha = 0.2f)
-                    },
+                    color = if (isFocused) Color.White.copy(alpha = 0.8f)
+                    else Color.White.copy(alpha = 0.2f),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .focusable()
@@ -509,6 +609,97 @@ class MainActivity : ComponentActivity() {
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun FavoritesManagementScreen(
+        apps: List<AppInfo>,
+        favoritePackages: Set<String>,
+        onToggleFavorite: (String) -> Unit,
+        onBack: () -> Unit
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Select apps to favorite",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(apps) { app ->
+                    FavoriteToggleCard(
+                        app = app,
+                        isFavorite = favoritePackages.contains(app.packageName),
+                        onClick = {
+                            onToggleFavorite(app.packageName)
+                        }
+                    )
+                }
+            }
+
+            SettingsListItem(
+                title = "Back",
+                onClick = onBack
+            )
+        }
+    }
+
+    @Composable
+    fun FavoriteToggleCard(
+        app: AppInfo,
+        isFavorite: Boolean,
+        onClick: () -> Unit
+    ) {
+        var isFocused by remember { mutableStateOf(false) }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1.7f)
+                .onFocusChanged { isFocused = it.isFocused }
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    if (isFocused) Color.White.copy(alpha = 0.12f)
+                    else Color.White.copy(alpha = 0.06f)
+                )
+                .border(
+                    width = if (isFocused) 2.dp else 1.dp,
+                    color = if (isFocused) Color.White.copy(alpha = 0.8f)
+                    else Color.White.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .focusable()
+                .clickable { onClick() }
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = app.name,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Text(
+                    text = if (isFavorite) "★ Favorite" else "+ Add Favorite",
+                    color = if (isFavorite) Color.White else Color.White.copy(alpha = 0.75f),
+                    fontSize = 14.sp
                 )
             }
         }
