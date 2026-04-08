@@ -4,12 +4,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -177,8 +177,21 @@ class MainActivity : ComponentActivity() {
             WallpaperOption(
                 name = "Hip Hop Rock",
                 imageUrl = "https://res.cloudinary.com/dfuhaulsy/image/upload/v1775444413/6033ea60-c1db-4960-b16b-1aae6738d26a_uttany.png"
+            ),
+            WallpaperOption(
+                name = "Beach",
+                imageUrl = "https://res.cloudinary.com/dfuhaulsy/image/upload/v1775612580/ft_luaderdale_dqynsy.png"
             )
         )
+
+        BackHandler(enabled = currentScreen != ScreenState.HOME) {
+            currentScreen = when (currentScreen) {
+                ScreenState.WALLPAPERS -> ScreenState.SETTINGS
+                ScreenState.FAVORITES -> ScreenState.SETTINGS
+                ScreenState.SETTINGS -> ScreenState.HOME
+                ScreenState.HOME -> ScreenState.HOME
+            }
+        }
 
         LaunchedEffect(Unit) {
             apps = withContext(Dispatchers.IO) {
@@ -245,7 +258,6 @@ class MainActivity : ComponentActivity() {
                                 else Color.White.copy(alpha = 0.2f),
                                 shape = RoundedCornerShape(12.dp)
                             )
-                            .focusable()
                             .clickable {
                                 currentScreen = ScreenState.SETTINGS
                             }
@@ -433,7 +445,6 @@ class MainActivity : ComponentActivity() {
                     else Color.White.copy(alpha = 0.2f),
                     shape = RoundedCornerShape(16.dp)
                 )
-                .focusable()
                 .clickable { onClick() }
                 .padding(16.dp),
             contentAlignment = Alignment.Center
@@ -511,7 +522,6 @@ class MainActivity : ComponentActivity() {
                     shape = RoundedCornerShape(16.dp)
                 )
                 .onFocusChanged { isFocused = it.isFocused }
-                .focusable()
                 .clickable { onClick() }
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
@@ -582,7 +592,6 @@ class MainActivity : ComponentActivity() {
                     else Color.White.copy(alpha = 0.2f),
                     shape = RoundedCornerShape(16.dp)
                 )
-                .focusable()
                 .clickable { onClick() }
         ) {
             AsyncImage(
@@ -680,7 +689,6 @@ class MainActivity : ComponentActivity() {
                     else Color.White.copy(alpha = 0.2f),
                     shape = RoundedCornerShape(16.dp)
                 )
-                .focusable()
                 .clickable { onClick() }
                 .padding(16.dp),
             contentAlignment = Alignment.Center
