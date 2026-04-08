@@ -1,38 +1,39 @@
 # 🎮 DFUSE TV Launcher
 
 A sleek, high-performance Android TV launcher built for speed, clarity, and style.  
-Designed with a dark UI, smooth navigation, and customizable wallpapers.
+Designed with a dark UI, smooth D-pad navigation, favorites support, and customizable wallpapers.
 
 ---
 
 ## ✨ Features
 
-- 🔲 Clean and responsive app grid
+- 🔲 Clean app layout with Favorites and All Apps sections
 - 🎯 Fully D-pad optimized navigation
-- 🎨 Custom wallpaper support
+- 🎨 Custom wallpaper support with persistent saved selection
+- ☁️ Cloud-hosted wallpapers support
+- ⚙️ Built-in settings menu
+- ⭐ Favorites management
 - ⚡ Fast and lightweight performance
-- 🌙 Dark UI made for TV viewing
-- 🧠 Simple and distraction-free layout
+- 🌙 Dark UI designed for TV viewing
 
 ---
 
 ## 🖼️ Screenshots
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dfuse06/dfuse_TV/main/shot4.png" width="900"/>
+  <img src="https://raw.githubusercontent.com/dfuse06/dfuse_TV/main/dfuse_home.png" width="900"/>
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dfuse06/dfuse_TV/main/shot5.png" width="900"/>
+  <img src="https://raw.githubusercontent.com/dfuse06/dfuse_TV/main/dfuse_settings.png" width="900"/>
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dfuse06/dfuse_TV/main/shot1.png" width="900"/>
+  <img src="https://raw.githubusercontent.com/dfuse06/dfuse_TV/main/dfuse_wallpapers.png" width="900"/>
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dfuse06/dfuse_TV/main/shot2.png" width="45%"/>
-  <img src="https://raw.githubusercontent.com/dfuse06/dfuse_TV/main/shot3.png" width="45%"/>
+  <img src="https://raw.githubusercontent.com/dfuse06/dfuse_TV/main/dfuse_ManageFavorites.png" width="900"/>
 </p>
 
 ---
@@ -43,6 +44,7 @@ Designed with a dark UI, smooth navigation, and customizable wallpapers.
 - Jetpack Compose
 - Android TV SDK
 - Coroutines
+- Coil
 
 ---
 
