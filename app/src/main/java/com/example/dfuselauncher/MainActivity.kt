@@ -2,6 +2,7 @@ package com.example.dfuselauncher
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -21,13 +22,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,14 +45,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -54,10 +62,20 @@ import coil.compose.AsyncImage
 import com.example.dfuselauncher.ui.theme.DfuseLauncherTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 data class AppInfo(
     val name: String,
-    val packageName: String
+    val packageName: String,
+    val icon: Drawable?
 )
 
 enum class ScreenState {
@@ -84,9 +102,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DfuseLauncherTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize()
-                ) {
+                Surface(modifier = Modifier.fillMaxSize()) {
                     LauncherScreen(
                         packageManager = packageManager,
                         onLaunchApp = { packageName ->
@@ -101,8 +117,9 @@ class MainActivity : ComponentActivity() {
     private fun launchApp(packageName: String) {
         try {
             if (packageName.contains("settings", ignoreCase = true)) {
-                val intent = Intent(android.provider.Settings.ACTION_SETTINGS)
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                val intent = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
                 startActivity(intent)
                 return
             }
@@ -114,6 +131,35 @@ class MainActivity : ComponentActivity() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    private fun openQuickSettings() {
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun openScreensaverSettings() {
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_DREAM_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            try {
+                val fallback = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(fallback)
+            } catch (e2: Exception) {
+                e2.printStackTrace()
+            }
         }
     }
 
@@ -157,9 +203,35 @@ class MainActivity : ComponentActivity() {
         var favoritePackages by remember { mutableStateOf(loadFavoritePackages()) }
         var currentScreen by remember { mutableStateOf(ScreenState.HOME) }
         var selectedWallpaperUrl by remember { mutableStateOf(loadSelectedWallpaper()) }
-        var settingsFocused by remember { mutableStateOf(false) }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val scope = rememberCoroutineScope()
 
-        val settingsFocusRequester = remember { FocusRequester() }
+        fun refreshApps() {
+            scope.launch {
+                apps = withContext(Dispatchers.IO) {
+                    loadLaunchableApps(packageManager, packageName)
+                }
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            refreshApps()
+        }
+
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    refreshApps()
+                }
+            }
+
+            lifecycleOwner.lifecycle.addObserver(observer)
+
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+            }
+        }
+
 
         val cloudinaryWallpapers = listOf(
             WallpaperOption(
@@ -195,13 +267,11 @@ class MainActivity : ComponentActivity() {
 
         LaunchedEffect(Unit) {
             apps = withContext(Dispatchers.IO) {
-                loadLaunchableApps(packageManager, "com.example.dfuselauncher")
+                loadLaunchableApps(packageManager, packageName)
             }
         }
 
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             if (selectedWallpaperUrl != null && selectedWallpaperUrl!!.startsWith("http")) {
                 AsyncImage(
                     model = selectedWallpaperUrl,
@@ -221,7 +291,7 @@ class MainActivity : ComponentActivity() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xBB101010))
+                    .background(Color(0x990A0A0A))
             )
 
             Column(
@@ -229,62 +299,45 @@ class MainActivity : ComponentActivity() {
                     .fillMaxSize()
                     .padding(start = 60.dp, top = 40.dp, end = 24.dp, bottom = 24.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "DFUSE TV",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                Text(
+                    text = "DFUSE TV",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.padding(bottom = 18.dp)
+                )
+
+                if (currentScreen == ScreenState.HOME) {
+                    TopActionRow(
+                        currentScreen = currentScreen,
+                        onGoHome = {
+                            currentScreen = ScreenState.HOME
+                        },
+                        onOpenScreensaver = {
+                            openScreensaverSettings()
+                        },
+                        onOpenQuickSettings = {
+                            openQuickSettings()
+                        },
+                        onOpenDfuseSettings = {
+                            currentScreen = ScreenState.SETTINGS
+                        }
                     )
 
-                    Box(
-                        modifier = Modifier
-                            .focusRequester(settingsFocusRequester)
-                            .onFocusChanged { settingsFocused = it.isFocused }
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (settingsFocused) Color.White.copy(alpha = 0.12f)
-                                else Color.White.copy(alpha = 0.08f)
-                            )
-                            .border(
-                                width = if (settingsFocused) 2.dp else 1.dp,
-                                color = if (settingsFocused) Color.White.copy(alpha = 0.8f)
-                                else Color.White.copy(alpha = 0.2f),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .clickable {
-                                currentScreen = ScreenState.SETTINGS
-                            }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "⚙",
-                            fontSize = 18.sp,
-                            color = Color.White
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(20.dp))
                 }
 
                 Text(
                     text = when (currentScreen) {
                         ScreenState.HOME -> "Home"
-                        ScreenState.SETTINGS -> "Settings"
+                        ScreenState.SETTINGS -> "DFUSE Settings"
                         ScreenState.WALLPAPERS -> "Wallpapers"
                         ScreenState.FAVORITES -> "Manage Favorites"
                     },
                     fontSize = 18.sp,
                     color = Color(0xFFB0B0B0),
-                    modifier = Modifier.padding(bottom = 20.dp)
+                    modifier = Modifier.padding(bottom = 24.dp)
                 )
-
-                Spacer(modifier = Modifier.height(40.dp))
 
                 when (currentScreen) {
                     ScreenState.HOME -> {
@@ -303,27 +356,25 @@ class MainActivity : ComponentActivity() {
                                         fontSize = 22.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
-                                        modifier = Modifier.padding(bottom = 12.dp)
+                                        modifier = Modifier.padding(bottom = 4.dp)
                                     )
                                 }
 
-                                items(favoriteApps.chunked(5)) { rowApps ->
+                                items(favoriteApps.chunked(6)) { rowApps ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         rowApps.forEach { app ->
                                             Box(modifier = Modifier.weight(1f)) {
-                                                AppCard(
+                                                FavoriteAppCard(
                                                     app = app,
-                                                    onClick = {
-                                                        onLaunchApp(app.packageName)
-                                                    }
+                                                    onClick = { onLaunchApp(app.packageName) }
                                                 )
                                             }
                                         }
 
-                                        repeat(5 - rowApps.size) {
+                                        repeat(6 - rowApps.size) {
                                             Spacer(modifier = Modifier.weight(1f))
                                         }
                                     }
@@ -335,38 +386,15 @@ class MainActivity : ComponentActivity() {
                                     text = "All Apps",
                                     fontSize = 22.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(bottom = 12.dp)
+                                    color = Color.White
                                 )
                             }
 
-                            items(nonFavoriteApps.chunked(5)) { rowApps ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    rowApps.forEachIndexed { index, app ->
-                                        Box(modifier = Modifier.weight(1f)) {
-                                            AppCard(
-                                                app = app,
-                                                onClick = {
-                                                    onLaunchApp(app.packageName)
-                                                },
-                                                modifier = if (favoriteApps.isEmpty() && index < 5) {
-                                                    Modifier.focusProperties {
-                                                        up = settingsFocusRequester
-                                                    }
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
-                                        }
-                                    }
-
-                                    repeat(5 - rowApps.size) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
-                                }
+                            item {
+                                CircularAppsRow(
+                                    apps = nonFavoriteApps,
+                                    onLaunchApp = onLaunchApp
+                                )
                             }
                         }
                     }
@@ -379,6 +407,7 @@ class MainActivity : ComponentActivity() {
                             onFavoritesClick = {
                                 currentScreen = ScreenState.FAVORITES
                             },
+                            onRefreshApps = { refreshApps() },
                             onBack = {
                                 currentScreen = ScreenState.HOME
                             }
@@ -416,44 +445,244 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
+
                 }
             }
         }
     }
 
     @Composable
-    fun AppCard(
-        app: AppInfo,
-        onClick: () -> Unit,
-        modifier: Modifier = Modifier
+    fun TopActionRow(
+        currentScreen: ScreenState,
+        onGoHome: () -> Unit,
+        onOpenScreensaver: () -> Unit,
+        onOpenQuickSettings: () -> Unit,
+        onOpenDfuseSettings: () -> Unit
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(Color.Transparent)
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TopActionButton(
+                    label = "Quick Settings",
+                    icon = Icons.Filled.Settings,
+                    onClick = onOpenQuickSettings
+                )
+
+                TopActionButton(
+                    label = "DFUSE Settings",
+                    icon = Icons.Filled.Tune,
+                    isSelected = currentScreen == ScreenState.SETTINGS ||
+                            currentScreen == ScreenState.WALLPAPERS ||
+                            currentScreen == ScreenState.FAVORITES,
+                    onClick = onOpenDfuseSettings
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun TopActionButton(
+        label: String,
+        icon: androidx.compose.ui.graphics.vector.ImageVector,
+        isSelected: Boolean = false,
+        onClick: () -> Unit
     ) {
         var isFocused by remember { mutableStateOf(false) }
 
         Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .aspectRatio(1.6f)
-                .onFocusChanged { isFocused = it.isFocused }
-                .clip(RoundedCornerShape(16.dp))
+            modifier = Modifier
+                .scale(if (isFocused) 1.03f else 1f)
+                .shadow(
+                    elevation = if (isFocused) 12.dp else 4.dp,
+                    shape = RoundedCornerShape(50)
+                )
+                .clip(RoundedCornerShape(50))
                 .background(
-                    if (isFocused) Color.White.copy(alpha = 0.12f)
-                    else Color.White.copy(alpha = 0.06f)
+                    when {
+                        isFocused -> Color.White.copy(alpha = 0.16f)
+                        isSelected -> Color.White.copy(alpha = 0.12f)
+                        else -> Color.White.copy(alpha = 0.08f)
+                    }
                 )
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
-                    color = if (isFocused) Color.White.copy(alpha = 0.8f)
-                    else Color.White.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(16.dp)
+                    color = if (isFocused) {
+                        Color.White.copy(alpha = 0.9f)
+                    } else {
+                        Color.White.copy(alpha = 0.20f)
+                    },
+                    shape = RoundedCornerShape(50)
+                )
+                .onFocusChanged { isFocused = it.isFocused }
+                .clickable { onClick() }
+                .padding(horizontal = 18.dp, vertical = 12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isFocused || isSelected) {
+                                Color.White.copy(alpha = 0.22f)
+                            } else {
+                                Color.White.copy(alpha = 0.14f)
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Text(
+                    text = label,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun FavoriteAppCard(
+        app: AppInfo,
+        onClick: () -> Unit
+    ) {
+        var isFocused by remember { mutableStateOf(false) }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1.25f)
+                .scale(if (isFocused) 1.03f else 1f)
+                .onFocusChanged { isFocused = it.isFocused }
+                .clip(RoundedCornerShape(18.dp))
+                .background(
+                    if (isFocused) Color.White.copy(alpha = 0.14f)
+                    else Color.White.copy(alpha = 0.08f)
+                )
+                .border(
+                    width = if (isFocused) 2.dp else 1.dp,
+                    color = if (isFocused) Color.White.copy(alpha = 0.85f)
+                    else Color.White.copy(alpha = 0.20f),
+                    shape = RoundedCornerShape(18.dp)
                 )
                 .clickable { onClick() }
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                AsyncImage(
+                    model = app.icon,
+                    contentDescription = app.name,
+                    modifier = Modifier.size(52.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = app.name,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun CircularAppsRow(
+        apps: List<AppInfo>,
+        onLaunchApp: (String) -> Unit
+    ) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp)
+        ) {
+            items(apps) { app ->
+                CircularAppButton(
+                    app = app,
+                    onClick = { onLaunchApp(app.packageName) }
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun CircularAppButton(
+        app: AppInfo,
+        onClick: () -> Unit
+    ) {
+        var isFocused by remember { mutableStateOf(false) }
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.width(110.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(if (isFocused) 92.dp else 84.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isFocused) Color.White.copy(alpha = 0.14f)
+                        else Color.White.copy(alpha = 0.08f)
+                    )
+                    .border(
+                        width = if (isFocused) 2.dp else 1.dp,
+                        color = if (isFocused) Color.White.copy(alpha = 0.90f)
+                        else Color.White.copy(alpha = 0.20f),
+                        shape = CircleShape
+                    )
+                    .onFocusChanged { isFocused = it.isFocused }
+                    .clickable { onClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (app.icon != null) {
+                    AsyncImage(
+                        model = app.icon,
+                        contentDescription = app.name,
+                        modifier = Modifier.size(46.dp)
+                    )
+                } else {
+                    Text(
+                        text = app.name.take(1),
+                        color = Color.White,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
             Text(
                 text = app.name,
                 color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -462,41 +691,22 @@ class MainActivity : ComponentActivity() {
     fun SettingsListScreen(
         onWallpaperClick: () -> Unit,
         onFavoritesClick: () -> Unit,
+        onRefreshApps: () -> Unit,
         onBack: () -> Unit
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(end = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            SettingsListItem(
-                title = "Wallpapers",
-                onClick = onWallpaperClick
-            )
-
-            SettingsListItem(
-                title = "Manage Favorites",
-                onClick = onFavoritesClick
-            )
-
-            SettingsListItem(
-                title = "Refresh Apps",
-                onClick = { }
-            )
-
-            SettingsListItem(
-                title = "Appearance",
-                onClick = { }
-            )
-
-            SettingsListItem(
-                title = "About",
-                onClick = { }
-            )
-
-            SettingsListItem(
-                title = "Back",
-                onClick = onBack
-            )
+            item { SettingsListItem("Wallpapers", onWallpaperClick) }
+            item { SettingsListItem("Manage Favorites", onFavoritesClick) }
+            item { SettingsListItem("Refresh Apps", onRefreshApps)}
+            item { SettingsListItem("Appearance", {}) }
+            item { SettingsListItem("About", {}) }
+            item { SettingsListItem("Back", onBack) }
         }
     }
 
@@ -510,6 +720,7 @@ class MainActivity : ComponentActivity() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .scale(if (isFocused) 1.02f else 1f)
                 .clip(RoundedCornerShape(16.dp))
                 .background(
                     if (isFocused) Color.White.copy(alpha = 0.12f)
@@ -517,8 +728,8 @@ class MainActivity : ComponentActivity() {
                 )
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
-                    color = if (isFocused) Color.White.copy(alpha = 0.8f)
-                    else Color.White.copy(alpha = 0.2f),
+                    color = if (isFocused) Color.White.copy(alpha = 0.90f)
+                    else Color.White.copy(alpha = 0.20f),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .onFocusChanged { isFocused = it.isFocused }
@@ -528,7 +739,8 @@ class MainActivity : ComponentActivity() {
             Text(
                 text = title,
                 color = Color.White,
-                fontSize = 18.sp
+                fontSize = 18.sp,
+                fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Normal
             )
         }
     }
@@ -540,35 +752,42 @@ class MainActivity : ComponentActivity() {
         onUseDefault: () -> Unit,
         onBack: () -> Unit
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            SettingsListItem(
-                title = "Use Default Background",
-                onClick = onUseDefault
-            )
+            item {
+                SettingsListItem(
+                    title = "Use Default Background",
+                    onClick = onUseDefault
+                )
+            }
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(wallpapers) { wallpaper ->
-                    RemoteWallpaperCard(
-                        wallpaper = wallpaper,
-                        onClick = {
-                            onSelectWallpaper(wallpaper.imageUrl)
-                        }
-                    )
+            item {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(700.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(wallpapers) { wallpaper ->
+                        RemoteWallpaperCard(
+                            wallpaper = wallpaper,
+                            onClick = { onSelectWallpaper(wallpaper.imageUrl) }
+                        )
+                    }
                 }
             }
 
-            SettingsListItem(
-                title = "Back",
-                onClick = onBack
-            )
+            item {
+                SettingsListItem(
+                    title = "Back",
+                    onClick = onBack
+                )
+            }
         }
     }
 
@@ -583,13 +802,14 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1.7f)
+                .scale(if (isFocused) 1.03f else 1f)
                 .onFocusChanged { isFocused = it.isFocused }
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.White.copy(alpha = 0.06f))
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
-                    color = if (isFocused) Color.White.copy(alpha = 0.8f)
-                    else Color.White.copy(alpha = 0.2f),
+                    color = if (isFocused) Color.White.copy(alpha = 0.90f)
+                    else Color.White.copy(alpha = 0.20f),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .clickable { onClick() }
@@ -604,7 +824,7 @@ class MainActivity : ComponentActivity() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x55000000))
+                    .background(Color(0x66000000))
             )
 
             Box(
@@ -630,38 +850,45 @@ class MainActivity : ComponentActivity() {
         onToggleFavorite: (String) -> Unit,
         onBack: () -> Unit
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            Text(
-                text = "Select apps to favorite",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
+            item {
+                Text(
+                    text = "Select apps to favorite",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(apps) { app ->
-                    FavoriteToggleCard(
-                        app = app,
-                        isFavorite = favoritePackages.contains(app.packageName),
-                        onClick = {
-                            onToggleFavorite(app.packageName)
-                        }
-                    )
+            item {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(700.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(apps) { app ->
+                        FavoriteToggleCard(
+                            app = app,
+                            isFavorite = favoritePackages.contains(app.packageName),
+                            onClick = { onToggleFavorite(app.packageName) }
+                        )
+                    }
                 }
             }
 
-            SettingsListItem(
-                title = "Back",
-                onClick = onBack
-            )
+            item {
+                SettingsListItem(
+                    title = "Back",
+                    onClick = onBack
+                )
+            }
         }
     }
 
@@ -676,7 +903,8 @@ class MainActivity : ComponentActivity() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1.7f)
+                .aspectRatio(1.35f)
+                .scale(if (isFocused) 1.03f else 1f)
                 .onFocusChanged { isFocused = it.isFocused }
                 .clip(RoundedCornerShape(16.dp))
                 .background(
@@ -685,8 +913,8 @@ class MainActivity : ComponentActivity() {
                 )
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
-                    color = if (isFocused) Color.White.copy(alpha = 0.8f)
-                    else Color.White.copy(alpha = 0.2f),
+                    color = if (isFocused) Color.White.copy(alpha = 0.90f)
+                    else Color.White.copy(alpha = 0.20f),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .clickable { onClick() }
@@ -695,25 +923,33 @@ class MainActivity : ComponentActivity() {
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                AsyncImage(
+                    model = app.icon,
+                    contentDescription = app.name,
+                    modifier = Modifier.size(48.dp)
+                )
+
                 Text(
                     text = app.name,
                     color = Color.White,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
 
                 Text(
                     text = if (isFavorite) "★ Favorite" else "+ Add Favorite",
-                    color = if (isFavorite) Color.White else Color.White.copy(alpha = 0.75f),
+                    color = Color.White.copy(alpha = if (isFavorite) 1f else 0.75f),
                     fontSize = 14.sp
                 )
             }
         }
     }
 
-    fun loadLaunchableApps(
+    private fun loadLaunchableApps(
         packageManager: PackageManager,
         myPackageName: String
     ): List<AppInfo> {
@@ -721,13 +957,19 @@ class MainActivity : ComponentActivity() {
             addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
         }
 
-        val leanbackApps = packageManager.queryIntentActivities(leanbackIntent, 0)
+        val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
 
-        return leanbackApps
+        val leanbackApps = packageManager.queryIntentActivities(leanbackIntent, 0)
+        val launcherApps = packageManager.queryIntentActivities(launcherIntent, 0)
+
+        return (leanbackApps + launcherApps)
             .map {
                 AppInfo(
                     name = it.loadLabel(packageManager).toString(),
-                    packageName = it.activityInfo.packageName
+                    packageName = it.activityInfo.packageName,
+                    icon = it.loadIcon(packageManager)
                 )
             }
             .filter { it.packageName != myPackageName }
